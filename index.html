@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Continuum Snake Engine V1</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            background-color: #0b0c10; 
+            color: #ffffff; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        header {
+            width: 100%;
+            max-width: 800px;
+            background-color: #1f2833;
+            border: 2px solid #66fcf1;
+            border-radius: 16px;
+            padding: 15px 25px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(102, 252, 241, 0.15);
+        }
+        .title-area h1 { font-size: 20px; font-weight: 900; color: #ffffff; }
+        .title-area span { font-size: 11px; font-weight: bold; color: #66fcf1; text-transform: uppercase; }
+        .metrics-area { display: flex; gap: 30px; text-align: center; }
+        .metric-label { font-size: 10px; color: #c5a059; text-transform: uppercase; font-weight: bold; }
+        .metric-value { font-size: 22px; font-weight: 900; color: #66fcf1; }
+
+        main {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            height: 450px;
+            border: 4px solid #1f2833;
+            border-radius: 20px;
+            overflow: hidden;
+            background-color: #000000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        canvas { width: 100%; height: 100%; display: block; }
+
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(11, 12, 16, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 30px;
+            transition: opacity 0.3s ease;
+            z-index: 10;
+        }
+        .overlay h2 { font-size: 26px; font-weight: 900; margin-bottom: 10px; color: #ffffff; text-transform: uppercase; }
+        .overlay p { font-size: 14px; color: #a9b7c6; max-width: 450px; margin-bottom: 25px; line-height: 1.5; text-align: center; }
+        .start-btn {
+            background-color: #66fcf1;
+            color: #0b0c10;
+            border: none;
+            padding: 14px 40px;
+            font-size: 16px;
+            font-weight: 900;
+            border-radius: 10px;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 4px 15px rgba(102, 252, 241, 0.4);
+            transition: transform 0.1s ease, background-color 0.2s ease;
+        }
+        .start-btn:hover { background-color: #45e3d7; transform: scale(1.03); }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="title-area">
+            <span>VECTOR CALCULUS INTERFACE</span>
+            <h1>CONTINUUM SNAKE CORE</h1>
+        </div>
+        <div class="metrics-area">
+            <div>
+                <div class="metric-label">Quantum Score</div>
+                <div id="scoreDisplay" class="metric-value">0000</div>
+            </div>
+            <div>
+                <div class="metric-label">System Node</div>
+                <div class="metric-value" style="color: #45e3d7;">60 FPS</div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="overlayScreen" class="overlay">
+            <h2 id="overlayTitle">CONTINUUM INTERFACE</h2>
+            <p id="overlaySub">Use your keyboard Left and Right arrow keys (or hold and drag your mouse inside the box) to pilot the fluid continuous chain vector seamlessly.</p>
+            <button onclick="initializeEnginePlayback()" class="start-btn">Engage Core Engine</button>
+        </div>
+    </main>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let animationFrameId;
+        let isEngineRunning = false;
+        let score = 0;
+
+        let snake = {
+            segments: [],
+            targetLength: 25,
+            segmentSpacing: 8,
+            speed: 4.5,
+            angle: 0,
+            turnSpeed: 0.08
+        };
+
+        let energyNexus = { x: 0, y: 0, radius: 12, pulse: 0 };
+        let particles = [];
+        let inputs = { left: false, right: false };
+        let mousePos = { x: 0, y: 0, usingMouse: false };
+
+        // Hard set canvas internal coordinate matrix dimensions
+        canvas.width = 800;
+        canvas.height = 450;
+
+        // Navigation input configurations
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') inputs.left = true;
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') inputs.right = true;
+        });
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') inputs.left = false;
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') inputs.right = false;
+        });
+
+        // Mouse controller integration tracking
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mousePos.x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            mousePos.y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            mousePos.usingMouse = true;
+        });
+        canvas.addEventListener('mouseleave', () => { mousePos.usingMouse = false; });
+
+        function initializeEnginePlayback() {
+            document.getElementById('overlayScreen').classList.add('hidden');
+            score = 0;
+            document.getElementById('scoreDisplay').innerText = "0000";
+            
+            snake.segments = [];
+            snake.angle = 0;
+            snake.targetLength = 25;
+            
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            for(let i = 0; i < snake.targetLength; i++) {
+                snake.segments.push({ x: centerX - (i * snake.segmentSpacing), y: centerY });
+            }
+
+            spawnEnergyNexus();
+            particles = [];
+            isEngineRunning = true;
+            
+            cancelAnimationFrame(animationFrameId);
+            runEnginePipeline();
+        }
+
+        function spawnEnergyNexus() {
+            const padding = 50;
+            energyNexus.x = padding + Math.random() * (canvas.width - padding * 2);
+            energyNexus.y = padding + Math.random() * (canvas.height - padding * 2);
+        }
+
+        function createExplosion(x, y) {
+            for(let i = 0; i < 20; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    radius: Math.random() * 3 + 1,
+                    alpha: 1
+                });
+            }
+        }
+
+        function terminateEnginePipeline() {
+            isEngineRunning = false;
+            document.getElementById('overlayTitle').innerText = "COLLISION ENGINE Suspended";
+            document.getElementById('overlaySub').innerText = `Vector framework bound reached. Final Score: ${score} points.`;
+            document.getElementById('overlayScreen').classList.remove('hidden');
+        }
+
+        function runEnginePipeline() {
+            if (!isEngineRunning) return;
+            
+            // Handle directional logic inputs
+            if (mousePos.usingMouse) {
+                let dx = mousePos.x - snake.segments[0].x;
+                let dy = mousePos.y - snake.segments[0].y;
+                let targetAngle = Math.atan2(dy, dx);
+                let angleDiff = targetAngle - snake.angle;
+                
+                // Keep angle normalization between -PI and PI
+                angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
+                
+                if (Math.abs(angleDiff) > 0.05) {
+                    snake.angle += Math.sign(angleDiff) * snake.turnSpeed;
+                }
+            } else {
+                if (inputs.left) snake.angle -= snake.turnSpeed;
+                if (inputs.right) snake.angle += snake.turnSpeed;
+            }
+
+            // Translate vector velocity positioning
+            let head = {
+                x: snake.segments[0].x + Math.cos(snake.angle) * snake.speed,
+                y: snake.segments[0].y + Math.sin(snake.angle) * snake.speed
+            };
+
+            // Wall Collisions
+            if (head.x < 0 || head.x > canvas.width || head.y < 0 || head.y > canvas.height) {
+                terminateEnginePipeline();
+                return;
+            }
+
+            // Self Collisions Check
+            for(let i = 20; i < snake.segments.length; i++) {
+                let dist = Math.hypot(head.x - snake.segments[i].x, head.y - snake.segments[i].y);
+                if (dist < 6) {
+                    terminateEnginePipeline();
+                    return;
+                }
+            }
+
+            snake.segments.unshift(head);
+            if (snake.segments.length > snake.targetLength) {
+                snake.segments.pop();
+            }
+
+            // Continual body link tracing chain loop
+            for (let i = 1; i < snake.segments.length; i++) {
+                let current = snake.segments[i];
+                let prev = snake.segments[i - 1];
+                let dx = current.x - prev.x;
+                let dy = current.y - prev.y;
+                let distance = Math.hypot(dx, dy);
+
